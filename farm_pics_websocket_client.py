@@ -3,30 +3,42 @@
 import argparse
 import websocket
 import time
+import datetime
+from datetime import time as dtime
 import json
 import os
+import subprocess
 import struct
-
-def run_sys_cmd(self, cmd):
-  p = subprocess.Popen([cmd,"30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-  (output, err) = p.communicate()
-  if output:
-    print(output)
-  if err:
-    print(err)
-  return output, err
-
+import pytz
 
 def on_message(ws, message):
-    print("message", message)
-    #ip = message decode from json['ip']
-    #struct.unpack("<I", struct.pack(">I", ip))[0]
-    cmd = "curl ip set quality"
-    run_sys_cmd(cmd)
-    cmd = "curl ip/capture"
-    run_sys_cmd(cmd)
-    cmd = "scp to dest"
-    run_sys_cmd(cmd)
+  print("message", message)
+  # curl 'http://192.168.0.102/control?var=quality&val=4' && sleep 2 && curl 'http://192.168.0.102/control?var=framesize&val=13' && sleep 5 && curl 'http://192.168.0.102/capture' --output capture.jpeg
+  SAST = pytz.timezone('Africa/Johannesburg')
+  ct = datetime.datetime.now(SAST).replace(tzinfo=None)
+
+  if "_id" in message and "cam_ready" in message and dtime(7,00) <= ct.time() <= dtime(17,00):
+    datajson = json.loads(message)
+    node_id = datajson['node_id']
+    cam_ready = datajson['cam_ready']
+    filename = ("/tmp/" + node_id + "_" + str(ct) + ".jpg").replace(" ", "")
+    ip = struct.unpack("<I", struct.pack(">I", int(datajson['ip'])))[0]
+    cmd = "curl 'http://%s/control?var=quality&val=4' && sleep 2" % ip
+    print(cmd)
+    p = subprocess.Popen([cmd,"30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    (output, err) = p.communicate()
+    cmd = "curl 'http://%s/control?var=framesize&val=13' && sleep 5" % ip
+    print(cmd)
+    p = subprocess.Popen([cmd,"30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    (output, err) = p.communicate()
+    cmd = "curl 'http://%s/capture' --output %s && sleep 5" % (ip, filename)
+    print(cmd)
+    p = subprocess.Popen([cmd,"30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    (output, err) = p.communicate()
+    cmd = "scp %s root@10.8.0.1:farmpics/ && rm -f %s" % (filename, filename)
+    print(cmd)
+    p = subprocess.Popen([cmd,"30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    (output, err) = p.communicate()
 
 def on_error(ws, error):
   print("error", error)
